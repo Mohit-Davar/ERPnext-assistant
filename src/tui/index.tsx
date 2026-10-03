@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import React from 'react';
 import { render } from 'ink';
-import { App } from '@/tui/App.tsx';
+import { App } from './App.tsx';
 
 render(<App />);

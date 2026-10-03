@@ -1,6 +1,6 @@
 import { checkNotFound, extractAndVerifyCitations } from '@/answer/citations.ts';
 import { streamLLM } from '@/answer/generate.ts';
-import { buildPrompt } from '@/answer/prompt.ts';
+import { buildPrompt, type ChatMessageContext } from '@/answer/prompt.ts';
 import type { Answer } from '@/answer/types.ts';
 import type { ExpandedContext } from '@/expand/types.ts';
 import type { Config } from '@/shared/types.ts';
@@ -14,16 +14,13 @@ export type { Answer, Citation } from '@/answer/types.ts';
  * Stream a grounded answer. Yields text deltas as they arrive from the LLM.
  * After the stream ends, the generator returns the fully resolved Answer.
  *
- * To get both deltas AND the final Answer, use the generator directly:
- *   const gen = streamAnswer(...);
- *   let result = await gen.next();
- *   while (!result.done) { write(result.value); result = await gen.next(); }
- *   const answer = result.value; // Answer
+ * Supports bounded conversation history for follow-up questions.
  */
-export async function* streamAnswer(
+export async function* generateAnswerStream(
   question: string,
   contexts: ExpandedContext[],
   config: Config,
+  conversationHistory: ChatMessageContext[] = [],
 ): AsyncGenerator<string, Answer> {
   if (contexts.length === 0) {
     return {
@@ -35,7 +32,7 @@ export async function* streamAnswer(
     };
   }
 
-  const { system, user } = buildPrompt(question, contexts);
+  const { system, user } = buildPrompt(question, contexts, conversationHistory);
   let fullText = '';
 
   for await (const delta of streamLLM(system, user, config)) {
@@ -47,4 +44,26 @@ export async function* streamAnswer(
   const found = !checkNotFound(fullText);
 
   return { question, text: fullText, citations, found, grounded };
+}
+
+/**
+ * Legacy alias for generateAnswerStream.
+ */
+export const streamAnswer = generateAnswerStream;
+
+/**
+ * Generate a complete grounded answer synchronously.
+ */
+export async function generateAnswer(
+  question: string,
+  contexts: ExpandedContext[],
+  config: Config,
+  conversationHistory: ChatMessageContext[] = [],
+): Promise<Answer> {
+  const gen = generateAnswerStream(question, contexts, config, conversationHistory);
+  let step = await gen.next();
+  while (!step.done) {
+    step = await gen.next();
+  }
+  return step.value;
 }

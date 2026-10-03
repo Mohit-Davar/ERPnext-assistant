@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@/index/database.ts';
 
 import type { ParentChunk } from '../chunk/types.ts';
 import type { EnrichedChunk } from '../enrich/types.ts';

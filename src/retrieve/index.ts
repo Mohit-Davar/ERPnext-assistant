@@ -4,7 +4,7 @@ import { rerank } from '@/retrieve/reranker.ts';
 import type { RerankResult } from '@/retrieve/types.ts';
 import { semanticSearch } from '@/retrieve/vector.ts';
 import type { Config } from '@/shared/types.ts';
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@/index/database.ts';
 
 export { keywordSearch } from '@/retrieve/keyword.ts';
 export { semanticSearch } from '@/retrieve/vector.ts';

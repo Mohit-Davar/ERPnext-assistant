@@ -1,4 +1,5 @@
 import type { Config } from '@/shared/types.ts';
+import { generateDeterministicEmbedding } from '@/index/database.ts';
 import OpenAI from 'openai';
 
 let openaiClient: OpenAI | null = null;
@@ -16,6 +17,10 @@ function getOpenAI(config: Config): OpenAI {
  * Generate an embedding vector for a single text.
  */
 export async function getEmbedding(text: string, config: Config): Promise<number[]> {
+  if (!config.openaiApiKey) {
+    return generateDeterministicEmbedding(text);
+  }
+
   const client = getOpenAI(config);
   const response = await client.embeddings.create({
     model: config.embeddingModel,
@@ -41,6 +46,10 @@ export async function batchEmbed(
   batchSize = 100,
   onProgress?: (completed: number, total: number) => void,
 ): Promise<number[][]> {
+  if (!config.openaiApiKey) {
+    return texts.map((t) => generateDeterministicEmbedding(t));
+  }
+
   const client = getOpenAI(config);
   const results: number[][] = new Array(texts.length);
 

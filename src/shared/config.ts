@@ -1,28 +1,22 @@
 import type { Config } from '@/shared/types.ts';
 
-/**
- * Load configuration from environment variables.
- * All values can be overridden via a .env file (Bun loads .env automatically).
- */
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-
-  return value;
+function getEnv(name: string, fallback: string = ''): string {
+  return process.env[name]?.trim() || fallback;
 }
 
+/**
+ * Load configuration from environment variables with safe defaults.
+ */
 export function loadConfig(): Config {
   return {
-    openaiApiKey: requiredEnv('OPENAI_API_KEY'),
-    embeddingModel: requiredEnv('EMBEDDING_MODEL'),
-    llmModel: requiredEnv('LLM_MODEL'),
+    openaiApiKey: getEnv('OPENAI_API_KEY', ''),
+    embeddingModel: getEnv('EMBEDDING_MODEL', 'text-embedding-3-small'),
+    llmModel: getEnv('LLM_MODEL', 'gpt-4o-mini'),
 
-    cohereApiKey: requiredEnv('COHERE_API_KEY'),
-    rerankModel: requiredEnv('RERANK_MODEL'),
+    cohereApiKey: getEnv('COHERE_API_KEY', ''),
+    rerankModel: getEnv('RERANK_MODEL', 'rerank-v3.5'),
 
-    dbPath: requiredEnv('DB_PATH'),
-    docsDir: requiredEnv('DOCS_DIR'),
+    dbPath: getEnv('DB_PATH', './data/erpnext.db'),
+    docsDir: getEnv('DOCS_DIR', './docs'),
   };
 }

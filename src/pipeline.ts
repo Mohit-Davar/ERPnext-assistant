@@ -3,16 +3,10 @@
  *
  * This file only wires stages together; it contains no parsing,
  * chunking, retrieval, prompting, or database logic.
- *
- * Commands:
- *   bun run ingest                     → load → parse → chunk → enrich → index
- *   bun run search "question"          → retrieve (keyword+vector+RRF)
- *   bun run ask "question"             → retrieve → expand → answer
- *   bun run evaluate                   → evaluate against golden set
  */
 
-import { streamAnswer } from '@/answer/index.ts';
-import type { Answer } from '@/answer/types.ts';
+import { generateAnswer, generateAnswerStream, streamAnswer } from '@/answer/index.ts';
+import type { Answer, Citation } from '@/answer/types.ts';
 import { chunkDocuments } from '@/chunk/index.ts';
 import { enrichChunks } from '@/enrich/index.ts';
 import { expandResults } from '@/expand/index.ts';
@@ -23,7 +17,16 @@ import { hybridRetrieve } from '@/retrieve/index.ts';
 import { loadConfig } from '@/shared/config.ts';
 import type { ChunkRow } from '@/shared/types.ts';
 
-const config = loadConfig();
+export const config = loadConfig();
+
+export {
+  hybridRetrieve,
+  expandResults,
+  generateAnswer,
+  generateAnswerStream,
+  streamAnswer,
+  openDatabase,
+};
 
 export interface IngestResult {
   unchanged: number;
@@ -102,28 +105,44 @@ export async function ingest(onProgress?: (msg: string) => void): Promise<Ingest
 
 export interface SearchResult {
   chunkId: string;
+  heading: string;
   breadcrumb: string;
   rerankScore: number;
   source_url: string;
   space: string;
+  content: string;
+  ui_path?: string | null;
 }
 
 // Search
-export async function search(query: string): Promise<SearchResult[]> {
+export async function search(query: string, topK = 10): Promise<SearchResult[]> {
   const db = openDatabase(config.dbPath);
 
-  const results = await hybridRetrieve(db, query, config, 8);
+  const results = await hybridRetrieve(db, query, config, topK);
   return results.map((r) => {
     const row = db
-      .query<ChunkRow, [string]>(`SELECT breadcrumb, source_url, space FROM chunks WHERE id = ?`)
+      .query<
+        {
+          heading: string;
+          breadcrumb: string;
+          source_url: string;
+          space: string;
+          content: string;
+          ui_path: string | null;
+        },
+        [string]
+      >(`SELECT heading, breadcrumb, source_url, space, content, ui_path FROM chunks WHERE id = ?`)
       .get(r.chunkId);
 
     return {
       chunkId: r.chunkId,
+      heading: row?.heading ?? r.chunkId,
       breadcrumb: row?.breadcrumb ?? r.chunkId,
       rerankScore: r.rerankScore,
       source_url: row?.source_url ?? '',
       space: row?.space ?? '',
+      content: row?.content ?? '',
+      ui_path: row?.ui_path,
     };
   });
 }
@@ -131,16 +150,26 @@ export async function search(query: string): Promise<SearchResult[]> {
 /**
  * Stream an answer. Yields text deltas while the LLM generates, then
  * returns the fully resolved Answer as the generator return value.
- *
- * Usage in CLI:
- *   const gen = askStream(question);
- *   let step = await gen.next();
- *   while (!step.done) { process.stdout.write(step.value); step = await gen.next(); }
- *   const answer = step.value; // resolved Answer with citations
  */
-export async function* askStream(question: string): AsyncGenerator<string, Answer> {
+export async function* askStream(
+  question: string,
+  history: { role: 'user' | 'assistant'; content: string }[] = [],
+): AsyncGenerator<string, Answer> {
   const db = openDatabase(config.dbPath);
   const reranked = await hybridRetrieve(db, question, config, 15);
   const contexts = expandResults(db, reranked);
-  return yield* streamAnswer(question, contexts, config);
+  return yield* generateAnswerStream(question, contexts, config, history);
+}
+
+/**
+ * Synchronous / resolved answer retrieval.
+ */
+export async function ask(
+  question: string,
+  history: { role: 'user' | 'assistant'; content: string }[] = [],
+): Promise<Answer> {
+  const db = openDatabase(config.dbPath);
+  const reranked = await hybridRetrieve(db, question, config, 15);
+  const contexts = expandResults(db, reranked);
+  return generateAnswer(question, contexts, config, history);
 }

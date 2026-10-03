@@ -1,139 +1,187 @@
-import type { Answer } from '@/answer/types.ts';
-import { askStream } from '@/pipeline.ts';
-import { Box, Text } from 'ink';
-import Spinner from 'ink-spinner';
+import { extractAndVerifyCitations } from '@/answer/citations.ts';
+import { generateAnswerStream } from '@/answer/index.ts';
+import { expandResults } from '@/expand/index.ts';
+import { addMessage, createConversation, getConversation } from '@/history/index.ts';
+import type { Message } from '@/history/types.ts';
+import { openDatabase } from '@/index/database.ts';
+import { hybridRetrieve } from '@/retrieve/index.ts';
+import { loadConfig } from '@/shared/config.ts';
+import { Box, Text, useInput } from 'ink';
+import TextInput from 'ink-text-input';
 import React, { useEffect, useState } from 'react';
 
-import { Header } from './Header.tsx';
-
-type Phase = 'retrieving' | 'streaming' | 'done' | 'error';
+import { ChatView } from './ChatView.tsx';
 
 interface AskViewProps {
-  question: string;
-  onDone: () => void;
+  conversationId: string | null;
+  onConversationChange: (id: string | null) => void;
+  isFocused: boolean;
+  onUnfocus: () => void;
 }
 
-export function AskView({ question, onDone }: AskViewProps) {
-  const [phase, setPhase] = useState<Phase>('retrieving');
-  const [streamedText, setStreamedText] = useState('');
-  const [answer, setAnswer] = useState<Answer | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
+export function AskView({
+  conversationId,
+  onConversationChange,
+  isFocused,
+  onUnfocus,
+}: AskViewProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputVal, setInputVal] = useState('');
+  const [isRetrieving, setIsRetrieving] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  // Fire onDone only AFTER React has painted the done/error state
+  const config = loadConfig();
+  const db = openDatabase(config.dbPath);
+
+  // Load conversation messages when conversationId changes
   useEffect(() => {
-    if (phase === 'done' || phase === 'error') {
-      onDone();
-    }
-  }, [phase]);
-
-  useEffect(() => {
-    async function run() {
-      try {
-        const gen = askStream(question);
-        setPhase('retrieving');
-
-        // First next() call triggers retrieval; until it yields the LLM has not started
-        let step = await gen.next();
-
-        // Once we get first delta the retrieval is done
-        setPhase('streaming');
-
-        let accumulated = '';
-        while (!step.done) {
-          accumulated += step.value;
-          setStreamedText(accumulated);
-          step = await gen.next();
-        }
-
-        setAnswer(step.value);
-        setPhase('done');
-      } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : String(err));
-        setPhase('error');
+    if (conversationId) {
+      const conv = getConversation(db, conversationId);
+      if (conv) {
+        setMessages(conv.messages);
+      } else {
+        setMessages([]);
       }
+    } else {
+      setMessages([]);
+    }
+  }, [conversationId]);
+
+  useInput((input, key) => {
+    if (!isFocused) return;
+
+    if (key.escape) {
+      onUnfocus();
+      return;
     }
 
-    run();
-  }, [question]);
+    if (input === 'n' && !isStreaming && !isRetrieving && inputVal === '') {
+      // Start new conversation
+      onConversationChange(null);
+      setMessages([]);
+      return;
+    }
+  });
+
+  const handleSubmit = async (text: string) => {
+    const question = text.trim();
+    if (!question || isRetrieving || isStreaming) return;
+
+    setInputVal('');
+    setError(null);
+
+    let currentConvId = conversationId;
+
+    // 1. Create conversation if new
+    if (!currentConvId) {
+      const newConv = createConversation(db, question);
+      currentConvId = newConv.id;
+      onConversationChange(currentConvId);
+    }
+
+    // 2. Add user message
+    const userMsg = addMessage(db, currentConvId, 'user', question);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
+
+    try {
+      // 3. Retrieve relevant documentation
+      setIsRetrieving(true);
+      const reranked = await hybridRetrieve(db, question, config, 15);
+      const contexts = expandResults(db, reranked);
+      setIsRetrieving(false);
+
+      // 4. Stream LLM answer with bounded history
+      setIsStreaming(true);
+      setStreamingText('');
+
+      const historyContext = updatedMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const streamGen = generateAnswerStream(question, contexts, config, historyContext);
+      let accumulated = '';
+
+      let step = await streamGen.next();
+      while (!step.done) {
+        accumulated += step.value;
+        setStreamingText(accumulated);
+        step = await streamGen.next();
+      }
+
+      const finalAnswer = step.value;
+      const { citations } = extractAndVerifyCitations(accumulated, contexts);
+
+      // 5. Save assistant message with citations to database
+      const assistantMsg = addMessage(
+        db,
+        currentConvId,
+        'assistant',
+        accumulated,
+        citations.length > 0 ? citations : finalAnswer.citations,
+      );
+
+      setMessages((prev) => [...prev, assistantMsg]);
+      setIsStreaming(false);
+      setStreamingText('');
+    } catch (err) {
+      setIsRetrieving(false);
+      setIsStreaming(false);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   return (
     <Box flexDirection="column">
-      <Header subtitle={`ask: ${question}`} />
+      {/* Scrollable / Stacked Chat view */}
+      <ChatView
+        messages={messages}
+        isRetrieving={isRetrieving}
+        isStreaming={isStreaming}
+        streamingText={streamingText}
+        error={error}
+      />
 
-      {/* Retrieval phase */}
-      {phase === 'retrieving' && (
-        <Box>
-          <Text color="yellow">
-            <Spinner type="dots" />
+      {/* Input box */}
+      <Box
+        flexDirection="row"
+        marginTop={1}
+        borderStyle="single"
+        borderColor={isFocused ? 'cyan' : 'gray'}
+        paddingX={1}
+      >
+        <Text color="cyan" bold>
+          {'? '}
+        </Text>
+        <TextInput
+          value={inputVal}
+          onChange={setInputVal}
+          onSubmit={handleSubmit}
+          placeholder={
+            isStreaming || isRetrieving
+              ? 'Generating answer…'
+              : 'Ask a question about ERPNext or Frappe documentation…'
+          }
+          focus={isFocused && !isStreaming && !isRetrieving}
+        />
+      </Box>
+
+      {/* Helper cue */}
+      <Box justifyContent="space-between" marginTop={0}>
+        <Text color="gray" dimColor>
+          {isFocused
+            ? '[Enter] Send  [Esc] Unfocus to switch tabs  [n] New Conversation'
+            : '[Press Enter or / to type]  [←/→] Switch tabs'}
+        </Text>
+        {conversationId && (
+          <Text color="gray" dimColor>
+            Conv: {conversationId.slice(0, 14)}
           </Text>
-          <Text color="yellow"> Retrieving relevant documentation…</Text>
-        </Box>
-      )}
-
-      {/* Streaming / done answer text */}
-      {(phase === 'streaming' || phase === 'done') && streamedText && (
-        <Box flexDirection="column" marginBottom={1}>
-          <Box marginBottom={1}>
-            <Text bold color="greenBright">
-              Answer
-            </Text>
-            {phase === 'streaming' && (
-              <Text color="gray">
-                {' '}
-                <Spinner type="arc" />
-              </Text>
-            )}
-          </Box>
-          <Box paddingLeft={2}>
-            <Text wrap="wrap">{streamedText}</Text>
-          </Box>
-        </Box>
-      )}
-
-      {/* Citations */}
-      {phase === 'done' && answer && answer.citations.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Box>
-            <Text color="gray" dimColor>
-              {'─'.repeat(50)}
-            </Text>
-          </Box>
-          <Box marginTop={1} marginBottom={1}>
-            <Text bold color="cyanBright">
-              Sources
-            </Text>
-          </Box>
-          {answer.citations.map((c) => (
-            <Box key={c.index} flexDirection="column" marginBottom={1} paddingLeft={2}>
-              <Text>
-                <Text color="cyanBright" bold>
-                  [{c.index}]
-                </Text>
-                <Text> {c.section}</Text>
-              </Text>
-              {c.url && (
-                <Text color="gray" dimColor>
-                  {c.url}
-                </Text>
-              )}
-            </Box>
-          ))}
-        </Box>
-      )}
-
-      {/* Not found */}
-      {phase === 'done' && answer && !answer.found && (
-        <Box marginTop={1}>
-          <Text color="yellowBright">⚠ No supporting documentation found.</Text>
-        </Box>
-      )}
-
-      {/* Error */}
-      {phase === 'error' && (
-        <Box>
-          <Text color="red">✖ {errorMsg}</Text>
-        </Box>
-      )}
+        )}
+      </Box>
     </Box>
   );
 }

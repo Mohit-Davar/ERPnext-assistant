@@ -1,0 +1,6 @@
+{
+  "name": "ERPNext Assistant",
+  "description": "AI-powered documentation assistant, hybrid search, and RAG ingestion pipeline for ERPNext and Frappe Framework.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

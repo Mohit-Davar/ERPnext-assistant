@@ -1,8 +1,22 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import chalk from 'chalk';
-import ora from 'ora';
+const chalk = {
+  blue: (t: string) => `\x1b[34m${t}\x1b[0m`,
+  green: (t: string) => `\x1b[32m${t}\x1b[0m`,
+  red: (t: string) => `\x1b[31m${t}\x1b[0m`,
+  gray: (t: string) => `\x1b[90m${t}\x1b[0m`,
+};
+
+const ora = (msg: string) => ({
+  start: () => {
+    console.log(`[i] ${msg}`);
+    return {
+      succeed: (m: string) => console.log(chalk.green(`✓ ${m}`)),
+      fail: (m: string) => console.log(chalk.red(`✗ ${m}`)),
+    };
+  },
+});
 
 const DOCS = [
   {

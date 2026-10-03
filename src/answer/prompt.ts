@@ -1,13 +1,19 @@
 import type { ExpandedContext } from '@/expand/types.ts';
 
+export interface ChatMessageContext {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 /**
- * Build a grounded answer prompt from retrieved documentation.
+ * Build a grounded answer prompt from retrieved documentation and recent conversation history.
  *
  * The model must answer only from the supplied context.
  */
 export function buildPrompt(
   question: string,
   contexts: ExpandedContext[],
+  conversationHistory: ChatMessageContext[] = [],
 ): { system: string; user: string } {
   const contextBlocks = contexts
     .map((ctx, index) => {
@@ -80,8 +86,18 @@ ANSWER STYLE:
 SUPPLIED DOCUMENTATION:
 ${contextBlocks}`;
 
+  let userText = question;
+  if (conversationHistory.length > 0) {
+    // Keep recent bounded window (last 6 messages)
+    const recent = conversationHistory.slice(-6);
+    const historyBlock = recent
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n\n');
+    userText = `RECENT CONVERSATION HISTORY:\n${historyBlock}\n\nCURRENT QUESTION:\n${question}`;
+  }
+
   return {
     system,
-    user: question,
+    user: userText,
   };
 }

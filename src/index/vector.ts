@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@/index/database.ts';
 
 export interface VectorSearchResult {
   chunkId: string;

@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@/index/database.ts';
 
 import type { RerankResult } from '../retrieve/types.ts';
 import { fetchChunk, fetchLinkedChunk, fetchParent } from './parent.ts';

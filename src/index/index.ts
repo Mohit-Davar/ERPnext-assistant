@@ -4,7 +4,7 @@ import { batchEmbed, getEmbedding } from '@/index/embed.ts';
 import { storeEmbedding } from '@/index/vector.ts';
 import type { ParsedDocument } from '@/parse/types.ts';
 import type { Config } from '@/shared/types.ts';
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@/index/database.ts';
 
 export { openDatabase } from '@/index/database.ts';
 export { bm25Search } from '@/index/keyword.ts';

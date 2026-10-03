@@ -1,6 +1,6 @@
 import type { ChunkRow, FusedResult, RerankResult } from '@/retrieve/types.ts';
 import type { Config } from '@/shared/types.ts';
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@/index/database.ts';
 
 interface CohereRerankResponse {
   results: {
@@ -18,6 +18,15 @@ export async function rerank(
 ): Promise<RerankResult[]> {
   if (fused.length === 0) {
     return [];
+  }
+
+  // If no Cohere API key, gracefully fallback to RRF rankings directly
+  if (!config.cohereApiKey) {
+    return fused.slice(0, topK).map((candidate) => ({
+      chunkId: candidate.chunkId,
+      rerankScore: candidate.rrfScore,
+      rrfScore: candidate.rrfScore,
+    }));
   }
 
   const ids = fused.map((result) => result.chunkId);
