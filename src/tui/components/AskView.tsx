@@ -6,7 +6,7 @@ import type { Message } from '@/history/types.ts';
 import { openDatabase } from '@/index/database.ts';
 import { hybridRetrieve } from '@/retrieve/index.ts';
 import { loadConfig } from '@/shared/config.ts';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdin } from 'ink';
 import TextInput from 'ink-text-input';
 import React, { useEffect, useState } from 'react';
 
@@ -25,6 +25,7 @@ export function AskView({
   isFocused,
   onUnfocus,
 }: AskViewProps) {
+  const { isRawModeSupported } = useStdin();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputVal, setInputVal] = useState('');
   const [isRetrieving, setIsRetrieving] = useState(false);
@@ -49,21 +50,24 @@ export function AskView({
     }
   }, [conversationId]);
 
-  useInput((input, key) => {
-    if (!isFocused) return;
+  useInput(
+    (input, key) => {
+      if (!isFocused) return;
 
-    if (key.escape) {
-      onUnfocus();
-      return;
-    }
+      if (key.escape) {
+        onUnfocus();
+        return;
+      }
 
-    if (input === 'n' && !isStreaming && !isRetrieving && inputVal === '') {
-      // Start new conversation
-      onConversationChange(null);
-      setMessages([]);
-      return;
-    }
-  });
+      if (input === 'n' && !isStreaming && !isRetrieving && inputVal === '') {
+        // Start new conversation
+        onConversationChange(null);
+        setMessages([]);
+        return;
+      }
+    },
+    { isActive: isFocused && isRawModeSupported },
+  );
 
   const handleSubmit = async (text: string) => {
     const question = text.trim();

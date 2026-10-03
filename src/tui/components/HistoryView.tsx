@@ -2,7 +2,7 @@ import { deleteConversation, listConversations } from '@/history/index.ts';
 import type { ConversationSummary } from '@/history/types.ts';
 import { openDatabase } from '@/index/database.ts';
 import { loadConfig } from '@/shared/config.ts';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdin } from 'ink';
 import React, { useEffect, useState } from 'react';
 
 interface HistoryViewProps {
@@ -18,6 +18,7 @@ export function HistoryView({
   onNewConversation,
   onUnfocus,
 }: HistoryViewProps) {
+  const { isRawModeSupported } = useStdin();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
@@ -77,7 +78,7 @@ export function HistoryView({
       }
       return;
     }
-  });
+  }, { isActive: isFocused && isRawModeSupported });
 
   return (
     <Box flexDirection="column">

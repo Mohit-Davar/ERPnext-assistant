@@ -21,5 +21,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "cli.tsx", "server.ts", "scrapper.ts"]
+  "include": ["src", "cli.tsx", "scrapper.ts"]
 }

@@ -1,4 +1,4 @@
-import { Box, useApp, useInput } from 'ink';
+import { Box, useApp, useInput, useStdin } from 'ink';
 import React, { useState } from 'react';
 
 import { AskView } from './components/AskView.tsx';
@@ -11,46 +11,50 @@ import { TAB_ORDER, Tabs, type TabKey } from './components/Tabs.tsx';
 
 export function App() {
   const { exit } = useApp();
+  const { isRawModeSupported } = useStdin();
   const [activeTab, setActiveTab] = useState<TabKey>('ask');
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isInputFocused, setIsInputFocused] = useState(true);
 
   // Global keyboard shortcuts
-  useInput((input, key) => {
-    // Exit on Ctrl+C
-    if (key.ctrl && input === 'c') {
-      exit();
-      return;
-    }
+  useInput(
+    (input, key) => {
+      // Exit on Ctrl+C
+      if (key.ctrl && input === 'c') {
+        exit();
+        return;
+      }
 
-    // Tab switching with arrow keys when not focused in a text input
-    if (!isInputFocused) {
-      if (key.leftArrow) {
-        const curIdx = TAB_ORDER.indexOf(activeTab);
-        const nextIdx = curIdx > 0 ? curIdx - 1 : TAB_ORDER.length - 1;
-        setActiveTab(TAB_ORDER[nextIdx]!);
-        return;
+      // Tab switching with arrow keys when not focused in a text input
+      if (!isInputFocused) {
+        if (key.leftArrow) {
+          const curIdx = TAB_ORDER.indexOf(activeTab);
+          const nextIdx = curIdx > 0 ? curIdx - 1 : TAB_ORDER.length - 1;
+          setActiveTab(TAB_ORDER[nextIdx]!);
+          return;
+        }
+        if (key.rightArrow) {
+          const curIdx = TAB_ORDER.indexOf(activeTab);
+          const nextIdx = curIdx < TAB_ORDER.length - 1 ? curIdx + 1 : 0;
+          setActiveTab(TAB_ORDER[nextIdx]!);
+          return;
+        }
+        if (key.return || input === '/' || input === 'i') {
+          setIsInputFocused(true);
+          return;
+        }
       }
-      if (key.rightArrow) {
-        const curIdx = TAB_ORDER.indexOf(activeTab);
-        const nextIdx = curIdx < TAB_ORDER.length - 1 ? curIdx + 1 : 0;
-        setActiveTab(TAB_ORDER[nextIdx]!);
-        return;
-      }
-      if (key.return || input === '/' || input === 'i') {
-        setIsInputFocused(true);
-        return;
-      }
-    }
 
-    // Direct tab hotkeys 1-4 when not typing
-    if (!isInputFocused) {
-      if (input === '1') { setActiveTab('ask'); return; }
-      if (input === '2') { setActiveTab('search'); return; }
-      if (input === '3') { setActiveTab('ingest'); return; }
-      if (input === '4') { setActiveTab('history'); return; }
-    }
-  });
+      // Direct tab hotkeys 1-4 when not typing
+      if (!isInputFocused) {
+        if (input === '1') { setActiveTab('ask'); return; }
+        if (input === '2') { setActiveTab('search'); return; }
+        if (input === '3') { setActiveTab('ingest'); return; }
+        if (input === '4') { setActiveTab('history'); return; }
+      }
+    },
+    { isActive: isRawModeSupported },
+  );
 
   const handleOpenConversation = (id: string) => {
     setActiveConversationId(id);

@@ -1,5 +1,5 @@
 import { ingest, type IngestResult } from '@/pipeline.ts';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdin } from 'ink';
 import Spinner from 'ink-spinner';
 import React, { useState } from 'react';
 
@@ -9,6 +9,7 @@ interface IngestViewProps {
 }
 
 export function IngestView({ isFocused, onUnfocus }: IngestViewProps) {
+  const { isRawModeSupported } = useStdin();
   const [isRunning, setIsRunning] = useState(false);
   const [currentStep, setCurrentStep] = useState<string>('Ready to index documentation');
   const [logs, setLogs] = useState<string[]>([]);
@@ -56,7 +57,7 @@ export function IngestView({ isFocused, onUnfocus }: IngestViewProps) {
       setVerbose((prev) => !prev);
       return;
     }
-  });
+  }, { isActive: isFocused && isRawModeSupported });
 
   return (
     <Box flexDirection="column">

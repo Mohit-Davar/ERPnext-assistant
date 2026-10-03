@@ -1,5 +1,5 @@
 import { search, type SearchResult } from '@/pipeline.ts';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, useStdin } from 'ink';
 import Spinner from 'ink-spinner';
 import TextInput from 'ink-text-input';
 import React, { useState } from 'react';
@@ -10,6 +10,7 @@ interface SearchViewProps {
 }
 
 export function SearchView({ isFocused, onUnfocus }: SearchViewProps) {
+  const { isRawModeSupported } = useStdin();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -87,7 +88,7 @@ export function SearchView({ isFocused, onUnfocus }: SearchViewProps) {
       setExpandedResult(null);
       return;
     }
-  });
+  }, { isActive: isFocused && isRawModeSupported });
 
   return (
     <Box flexDirection="column">
