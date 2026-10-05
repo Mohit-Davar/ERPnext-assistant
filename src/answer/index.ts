@@ -23,13 +23,10 @@ export async function* generateAnswerStream(
   conversationHistory: ChatMessageContext[] = [],
 ): AsyncGenerator<string, Answer> {
   if (contexts.length === 0) {
-    return {
-      question,
-      text: "I couldn't find this in the ERPNext/Frappe documentation.",
-      citations: [],
-      found: false,
-      grounded: false,
-    };
+    const text =
+      "I couldn't find any indexed documentation. Download the documentation and run ingestion before asking a question.";
+    yield text;
+    return { question, text, citations: [], found: false, grounded: false };
   }
 
   const { system, user } = buildPrompt(question, contexts, conversationHistory);

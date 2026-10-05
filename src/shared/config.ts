@@ -1,13 +1,28 @@
+import { existsSync } from 'node:fs';
+
 import type { Config } from '@/shared/types.ts';
 
 function getEnv(name: string, fallback: string = ''): string {
   return process.env[name]?.trim() || fallback;
 }
 
+let envFileLoaded = false;
+
+function loadEnvFile(): void {
+  if (envFileLoaded) return;
+
+  if (existsSync('.env') && typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile('.env');
+  }
+  envFileLoaded = true;
+}
+
 /**
  * Load configuration from environment variables with safe defaults.
  */
 export function loadConfig(): Config {
+  loadEnvFile();
+
   return {
     openaiApiKey: getEnv('OPENAI_API_KEY', ''),
     embeddingModel: getEnv('EMBEDDING_MODEL', 'text-embedding-3-small'),

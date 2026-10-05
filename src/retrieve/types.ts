@@ -25,3 +25,8 @@ export interface ChunkRow {
   id: string;
   enriched_content: string;
 }
+
+export interface RetrievalHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}

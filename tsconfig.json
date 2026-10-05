@@ -17,9 +17,10 @@
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
 
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["src/*"]
     }
   },
-  "include": ["src", "cli.tsx", "scrapper.ts"]
+  "include": ["src", "scrapper.ts", "ingest.ts"]
 }

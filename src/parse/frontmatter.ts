@@ -1,4 +1,5 @@
 import type { Frontmatter } from '@/parse/types';
+import { Space } from '@/shared/types';
 
 /**
  * Parse YAML-style frontmatter from Markdown content.
@@ -31,9 +32,12 @@ export function parseFrontmatter(raw: string): {
   const block = match[1] ?? '';
   const body = raw.slice(match[0].length).trimStart();
   const frontmatter = { ...defaults };
+
   for (const line of block.split(/\r?\n/)) {
     const colon = line.indexOf(':');
-    if (colon === -1) continue;
+    if (colon === -1) {
+      continue;
+    }
     const key = line.slice(0, colon).trim();
     // Strip surrounding quotes and trim whitespace/newlines
     const value = line
@@ -51,5 +55,6 @@ export function parseFrontmatter(raw: string): {
       frontmatter.updated = value;
     }
   }
+
   return { frontmatter, body };
 }

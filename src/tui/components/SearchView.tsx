@@ -2,228 +2,224 @@ import { search, type SearchResult } from '@/pipeline.ts';
 import { Box, Text, useInput, useStdin } from 'ink';
 import Spinner from 'ink-spinner';
 import TextInput from 'ink-text-input';
-import React, { useState } from 'react';
+import { useState } from 'react';
+
+import { Markdown, truncate, useTerminalSize } from './ui.tsx';
 
 interface SearchViewProps {
   isFocused: boolean;
   onUnfocus: () => void;
+  width: number;
 }
 
-export function SearchView({ isFocused, onUnfocus }: SearchViewProps) {
+type FocusMode = 'input' | 'list';
+
+const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+export function SearchView({ isFocused, onUnfocus, width }: SearchViewProps) {
   const { isRawModeSupported } = useStdin();
+  const { rows } = useTerminalSize();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [expandedResult, setExpandedResult] = useState<SearchResult | null>(null);
+  const [expanded, setExpanded] = useState<SearchResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [focusMode, setFocusMode] = useState<'input' | 'list'>('input');
+  const [focusMode, setFocusMode] = useState<FocusMode>('input');
 
-  const handleSearch = async (val: string) => {
-    const q = val.trim();
-    if (!q) return;
+  const handleSearch = async (value: string) => {
+    const q = value.trim();
+    if (!q || isLoading) return;
 
     setIsLoading(true);
     setError(null);
-    setExpandedResult(null);
+    setExpanded(null);
 
     try {
-      const res = await search(q, 10);
-      setResults(res);
+      const found = await search(q, 10);
+      setResults(found);
       setHasSearched(true);
       setSelectedIndex(0);
-      if (res.length > 0) {
-        setFocusMode('list');
-      }
+      if (found.length > 0) setFocusMode('list');
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setIsLoading(false);
     }
   };
 
-  useInput((input, key) => {
-    if (!isFocused) return;
-
-    // Handle escape
-    if (key.escape) {
-      if (expandedResult) {
-        setExpandedResult(null);
+  useInput(
+    (input, key) => {
+      if (key.escape) {
+        if (expanded) setExpanded(null);
+        else if (focusMode === 'list') setFocusMode('input');
+        else onUnfocus();
         return;
       }
-      if (focusMode === 'list') {
-        setFocusMode('input');
+
+      if (expanded) {
+        if (key.return) setExpanded(null);
         return;
       }
-      onUnfocus();
-      return;
-    }
 
-    // List navigation when results are focused
-    if (focusMode === 'list' && !expandedResult && results.length > 0) {
+      if (focusMode === 'input') {
+        if (key.downArrow && results.length > 0) setFocusMode('list');
+        return;
+      }
+
+      // List mode
+      if (results.length === 0) return;
       if (key.upArrow) {
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
-        return;
-      }
-      if (key.downArrow) {
-        setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
-        return;
-      }
-      if (key.return) {
+        setSelectedIndex((i) => (i > 0 ? i - 1 : results.length - 1));
+      } else if (key.downArrow) {
+        setSelectedIndex((i) => (i < results.length - 1 ? i + 1 : 0));
+      } else if (key.return) {
         const item = results[selectedIndex];
-        if (item) {
-          setExpandedResult(item);
-        }
-        return;
-      }
-      if (input === '/' || input === 'i') {
+        if (item) setExpanded(item);
+      } else if (input === '/' || input === 'i') {
         setFocusMode('input');
-        return;
       }
-    }
+    },
+    { isActive: isFocused && isRawModeSupported },
+  );
 
-    // If expanded, enter or esc goes back
-    if (expandedResult && (key.return || key.escape)) {
-      setExpandedResult(null);
-      return;
-    }
-  }, { isActive: isFocused && isRawModeSupported });
+  // Each result takes three rows (title, preview, gap).
+  const rowsForList = Math.max(6, rows - 14);
+  const visibleCount = Math.max(2, Math.floor(rowsForList / 3));
+  const windowStart = Math.max(
+    0,
+    Math.min(selectedIndex - Math.floor(visibleCount / 2), results.length - visibleCount),
+  );
+  const visibleResults = results.slice(windowStart, windowStart + visibleCount);
+
+  const inputActive = isFocused && focusMode === 'input' && !isLoading && !expanded;
+
+  // Detail view: cap the body so it never pushes the layout off screen.
+  const bodyLines = expanded ? expanded.content.split('\n') : [];
+  const maxBody = Math.max(5, rows - 17);
+  const bodyText = bodyLines.slice(0, maxBody).join('\n');
+  const bodyHidden = Math.max(0, bodyLines.length - maxBody);
 
   return (
     <Box flexDirection="column">
-      {/* Search Input Bar */}
       <Box
-        flexDirection="row"
-        borderStyle="single"
-        borderColor={isFocused && focusMode === 'input' ? 'cyan' : 'gray'}
+        borderStyle="round"
+        borderColor={inputActive ? 'cyan' : 'gray'}
         paddingX={1}
+        width={width}
       >
-        <Text color="cyan" bold>
+        <Text bold color={inputActive ? 'cyan' : 'gray'}>
           {'⌕ '}
         </Text>
         <TextInput
           value={query}
           onChange={setQuery}
           onSubmit={handleSearch}
-          placeholder="Search documentation (e.g., Sales Invoice, DocType, valuation, scripts)…"
-          focus={isFocused && focusMode === 'input'}
+          placeholder="Search the docs: Sales Invoice, DocType, valuation…"
+          focus={inputActive}
         />
       </Box>
 
-      {/* Loading state */}
       {isLoading && (
-        <Box flexDirection="row" marginY={1}>
-          <Text color="yellow">
+        <Box marginTop={1}>
+          <Text color="cyan">
             <Spinner type="dots" />
           </Text>
-          <Text color="yellow"> Searching documentation chunks via hybrid retrieval…</Text>
+          <Text dimColor> Searching…</Text>
         </Box>
       )}
 
-      {/* Error state */}
       {error && (
-        <Box marginY={1}>
-          <Text color="red">✖ Error: {error}</Text>
+        <Box marginTop={1}>
+          <Text color="red">✖ {error}</Text>
         </Box>
       )}
 
-      {/* Expanded detail view */}
-      {expandedResult && (
-        <Box
-          flexDirection="column"
-          marginY={1}
-          borderStyle="round"
-          borderColor="cyan"
-          padding={1}
-        >
-          <Box justifyContent="space-between" marginBottom={1}>
-            <Text bold color="cyan">
-              {expandedResult.breadcrumb}
-            </Text>
-            <Text color="yellow">Score: {expandedResult.rerankScore.toFixed(4)}</Text>
-          </Box>
-          <Box marginBottom={1}>
-            <Text color="gray">
-              Space: <Text bold color="white">{expandedResult.space}</Text>
-              {expandedResult.ui_path && (
-                <> │ UI: <Text color="gray">{expandedResult.ui_path}</Text></>
-              )}
-            </Text>
-          </Box>
-          <Box marginBottom={1}>
-            <Text wrap="wrap">{expandedResult.content}</Text>
-          </Box>
-          {expandedResult.source_url && (
-            <Box marginTop={1}>
-              <Text color="gray" dimColor>
-                URL: {expandedResult.source_url}
+      {expanded && (
+        <Box flexDirection="column" marginTop={1} paddingX={1}>
+          <Text bold color="cyan" wrap="wrap">
+            {expanded.breadcrumb}
+          </Text>
+          <Text dimColor>
+            {[
+              expanded.space,
+              expanded.ui_path,
+              `score ${expanded.rerankScore.toFixed(3)}`,
+            ]
+              .filter(Boolean)
+              .join('  ·  ')}
+          </Text>
+          <Box marginTop={1} flexDirection="column">
+            <Markdown text={bodyText} />
+            {bodyHidden > 0 && (
+              <Text dimColor>
+                … {bodyHidden} more {bodyHidden === 1 ? 'line' : 'lines'}
               </Text>
+            )}
+          </Box>
+          {expanded.source_url && (
+            <Box marginTop={1}>
+              <Text dimColor>{truncate(expanded.source_url, width - 4)}</Text>
             </Box>
           )}
           <Box marginTop={1}>
-            <Text color="gray" dimColor>
-              [Esc / Enter] Close detail view
-            </Text>
+            <Text dimColor>enter or esc to go back</Text>
           </Box>
         </Box>
       )}
 
-      {/* Results List */}
-      {!expandedResult && results.length > 0 && (
-        <Box flexDirection="column" marginY={1}>
-          <Box marginBottom={1} justifyContent="space-between">
-            <Text color="gray">
-              Found <Text bold color="white">{results.length}</Text> documentation matches:
+      {!expanded && results.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Box justifyContent="space-between" width={width} marginBottom={1}>
+            <Text dimColor>
+              {results.length} {results.length === 1 ? 'match' : 'matches'}
             </Text>
-            <Text color="gray" dimColor>
-              {focusMode === 'list'
-                ? '[↑/↓] Select  [Enter] View  [/] Edit query'
-                : '[Press ↓ to navigate results]'}
+            <Text dimColor>
+              {focusMode === 'list' ? '↑↓ select · enter read · / edit query' : '↓ to browse results'}
             </Text>
           </Box>
 
-          {results.map((r, idx) => {
+          {windowStart > 0 && <Text dimColor>  ↑ {windowStart} more</Text>}
+
+          {visibleResults.map((r, i) => {
+            const idx = windowStart + i;
             const isSelected = focusMode === 'list' && idx === selectedIndex;
-            const preview =
-              r.content.length > 120
-                ? r.content.slice(0, 117).replace(/\n+/g, ' ') + '...'
-                : r.content.replace(/\n+/g, ' ');
+            const meta = `${r.rerankScore.toFixed(2)} · ${r.space}`;
+            const titleRoom = Math.max(10, width - meta.length - 8);
 
             return (
-              <Box
-                key={r.chunkId}
-                flexDirection="column"
-                marginBottom={1}
-                paddingLeft={1}
-                borderStyle={isSelected ? 'single' : undefined}
-                borderColor={isSelected ? 'cyan' : undefined}
-              >
-                <Box>
-                  <Text bold color={isSelected ? 'cyan' : 'white'}>
-                    {isSelected ? '▶ ' : '  '}
-                    {idx + 1}. {r.breadcrumb}
+              <Box key={r.chunkId} flexDirection="column" marginBottom={1}>
+                <Box justifyContent="space-between" width={width}>
+                  <Text bold={isSelected} color={isSelected ? 'cyan' : undefined}>
+                    {isSelected ? '› ' : '  '}
+                    {idx + 1}. {truncate(r.breadcrumb, titleRoom)}
                   </Text>
-                  <Text color="gray"> │ </Text>
-                  <Text color="green">{r.rerankScore.toFixed(3)}</Text>
-                  <Text color="gray"> │ </Text>
-                  <Text color="yellow">[{r.space}]</Text>
+                  <Text dimColor>{meta}</Text>
                 </Box>
-                <Box paddingLeft={3}>
-                  <Text color="gray" wrap="wrap">
-                    {preview}
-                  </Text>
-                </Box>
+                <Text dimColor>
+                  {'     '}
+                  {truncate(r.content, width - 8)}
+                </Text>
               </Box>
             );
           })}
+
+          {windowStart + visibleCount < results.length && (
+            <Text dimColor>  ↓ {results.length - windowStart - visibleCount} more</Text>
+          )}
         </Box>
       )}
 
-      {/* No results */}
-      {!isLoading && hasSearched && results.length === 0 && !error && (
-        <Box marginY={1}>
-          <Text color="yellow">⚠ No matching documentation found for "{query}".</Text>
+      {!isLoading && !error && hasSearched && results.length === 0 && (
+        <Box marginTop={1}>
+          <Text color="yellow">Nothing found for “{truncate(query, width - 24)}”. Try fewer or different words.</Text>
+        </Box>
+      )}
+
+      {!hasSearched && !isLoading && !error && (
+        <Box marginTop={1}>
+          <Text dimColor>Type a topic and press enter. Results are ranked by relevance.</Text>
         </Box>
       )}
     </Box>

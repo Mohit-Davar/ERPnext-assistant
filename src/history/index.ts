@@ -1,6 +1,63 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { basename, dirname, resolve } from 'node:path';
+
 import type { Citation } from '@/answer/types.ts';
 import type { Conversation, ConversationSummary, Message } from '@/history/types.ts';
 import type { Database } from '@/index/database.ts';
+import { loadConfig } from '@/shared/config.ts';
+
+function isStoredMessage(value: unknown): value is Message {
+  if (!value || typeof value !== 'object') return false;
+  const message = value as Record<string, unknown>;
+  return (
+    typeof message.id === 'string' &&
+    typeof message.conversationId === 'string' &&
+    (message.role === 'user' || message.role === 'assistant') &&
+    typeof message.content === 'string' &&
+    typeof message.createdAt === 'string' &&
+    (message.citations === undefined || Array.isArray(message.citations))
+  );
+}
+
+function isStoredConversation(value: unknown): value is Conversation {
+  if (!value || typeof value !== 'object') return false;
+  const conversation = value as Record<string, unknown>;
+  return (
+    typeof conversation.id === 'string' &&
+    typeof conversation.title === 'string' &&
+    typeof conversation.createdAt === 'string' &&
+    typeof conversation.updatedAt === 'string' &&
+    Array.isArray(conversation.messages) &&
+    conversation.messages.every(isStoredMessage)
+  );
+}
+
+function getHistoryPath(): string {
+  const dbPath = resolve(loadConfig().dbPath);
+  return resolve(dirname(dbPath), `${basename(dbPath)}.history.json`);
+}
+
+function readStoredConversations(): Conversation[] {
+  const path = getHistoryPath();
+  if (!existsSync(path)) return [];
+
+  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Conversation history in ${path} must contain a JSON array.`);
+  }
+  if (!parsed.every(isStoredConversation)) {
+    throw new Error(`Conversation history in ${path} contains invalid data.`);
+  }
+  return parsed;
+}
+
+function writeStoredConversations(conversations: Conversation[]): void {
+  const path = getHistoryPath();
+  mkdirSync(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, JSON.stringify(conversations, null, 2), 'utf8');
+  renameSync(temporaryPath, path);
+}
 
 /**
  * Generate a clean, human-readable conversation title from the first question.
@@ -8,7 +65,10 @@ import type { Database } from '@/index/database.ts';
  * Does not make any external LLM call.
  */
 export function cleanTitle(question: string): string {
-  const clean = question.trim().replace(/^["']+|["']+$/g, '').replace(/\s+/g, ' ');
+  const clean = question
+    .trim()
+    .replace(/^["']+|["']+$/g, '')
+    .replace(/\s+/g, ' ');
   if (!clean) return 'New Conversation';
   if (clean.length <= 45) return clean;
   return clean.slice(0, 42).trim() + '...';
@@ -26,6 +86,10 @@ export function createConversation(db: Database, firstQuestion: string): Convers
     `INSERT OR REPLACE INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)`,
   ).run(id, title, now, now);
 
+  const conversations = readStoredConversations();
+  conversations.push({ id, title, createdAt: now, updatedAt: now, messageCount: 0, messages: [] });
+  writeStoredConversations(conversations);
+
   return {
     id,
     title,
@@ -40,26 +104,38 @@ export function createConversation(db: Database, firstQuestion: string): Convers
  * Does NOT load message bodies to keep memory and query overhead minimal.
  */
 export function listConversations(db: Database): ConversationSummary[] {
+  const storedConversations = readStoredConversations();
+  const summaries = new Map<string, ConversationSummary>(
+    storedConversations.map(({ messages, ...conversation }) => [
+      conversation.id,
+      { ...conversation, messageCount: messages.length },
+    ]),
+  );
+
   const rows = db
     .query<{ id: string; title: string; created_at: string; updated_at: string }, []>(
       `SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC`,
     )
     .all();
 
-  return rows.map((r) => {
+  for (const r of rows) {
+    if (summaries.has(r.id)) continue;
+
     // Count messages without loading them into memory
     const countRow = db
       .query<{ id: string }, [string]>(`SELECT id FROM messages WHERE conversation_id = ?`)
       .all(r.id);
 
-    return {
+    summaries.set(r.id, {
       id: r.id,
       title: r.title,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       messageCount: countRow.length,
-    };
-  });
+    });
+  }
+
+  return [...summaries.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /**
@@ -67,6 +143,9 @@ export function listConversations(db: Database): ConversationSummary[] {
  * Only called on demand when the conversation is opened.
  */
 export function getConversation(db: Database, id: string): Conversation | null {
+  const stored = readStoredConversations().find((conversation) => conversation.id === id);
+  if (stored) return stored;
+
   const conv = db
     .query<{ id: string; title: string; created_at: string; updated_at: string }, [string]>(
       `SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?`,
@@ -88,7 +167,9 @@ export function getConversation(db: Database, id: string): Conversation | null {
         created_at: string;
       },
       [string]
-    >(`SELECT id, conversation_id, role, content, citations, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`)
+    >(
+      `SELECT id, conversation_id, role, content, citations, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC`,
+    )
     .all(id);
 
   const messages: Message[] = rawMessages.map((m) => ({
@@ -120,6 +201,17 @@ export function addMessage(
   content: string,
   citations?: Citation[],
 ): Message {
+  const conversations = readStoredConversations();
+  let conversation = conversations.find((item) => item.id === conversationId);
+  if (!conversation) {
+    const existing = getConversation(db, conversationId);
+    if (!existing) {
+      throw new Error(`Cannot add a message to missing conversation "${conversationId}".`);
+    }
+    conversation = { ...existing, messages: existing.messages };
+    conversations.push(conversation);
+  }
+
   const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   const citationsJson = citations && citations.length > 0 ? JSON.stringify(citations) : null;
@@ -130,7 +222,7 @@ export function addMessage(
 
   db.prepare(`UPDATE conversations SET updated_at = ? WHERE id = ?`).run(now, conversationId);
 
-  return {
+  const message: Message = {
     id,
     conversationId,
     role,
@@ -138,6 +230,12 @@ export function addMessage(
     citations,
     createdAt: now,
   };
+  conversation.messages.push(message);
+  conversation.updatedAt = now;
+  conversation.messageCount = conversation.messages.length;
+  writeStoredConversations(conversations);
+
+  return message;
 }
 
 /**
@@ -145,4 +243,7 @@ export function addMessage(
  */
 export function deleteConversation(db: Database, id: string): void {
   db.prepare(`DELETE FROM conversations WHERE id = ?`).run(id);
+  writeStoredConversations(
+    readStoredConversations().filter((conversation) => conversation.id !== id),
+  );
 }

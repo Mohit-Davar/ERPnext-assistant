@@ -1,10 +1,10 @@
 import type { ParentChunk } from '@/chunk/types.ts';
 import type { ChunkLink, EnrichedChunk } from '@/enrich/types.ts';
+import type { Database } from '@/index/database.ts';
 import { batchEmbed, getEmbedding } from '@/index/embed.ts';
 import { storeEmbedding } from '@/index/vector.ts';
 import type { ParsedDocument } from '@/parse/types.ts';
 import type { Config } from '@/shared/types.ts';
-import type { Database } from '@/index/database.ts';
 
 export { openDatabase } from '@/index/database.ts';
 export { bm25Search } from '@/index/keyword.ts';
@@ -47,7 +47,7 @@ export async function indexAll(
      VALUES (?, ?, ?, ?, ?)`,
   );
 
-  // Batch insert everything in one transaction (much faster)
+  // Batch insert everything in one transaction
   const insertAllSync = db.transaction(() => {
     for (const page of pages) {
       insertPage.run(page.id, page.filename, page.space, page.title, page.url, page.updated, now);
@@ -91,16 +91,17 @@ export async function indexAll(
       );
     }
   });
-
   insertAllSync();
 
-  if (onProgress) onProgress(`Generating embeddings for ${chunks.length} chunks...`);
-
+  if (onProgress) {
+    onProgress(`Generating embeddings for ${chunks.length} chunks...`);
+  }
   const texts = chunks.map((c) => c.enrichedContent);
   const embeddings = await getEmbeddingBatchSupport(texts, config, onProgress);
 
-  if (onProgress) onProgress(`Storing ${embeddings.length} embeddings in database...`);
-
+  if (onProgress) {
+    onProgress(`Storing ${embeddings.length} embeddings in database...`);
+  }
   const insertEmbedSync = db.transaction(() => {
     for (let i = 0; i < chunks.length; i++) {
       storeEmbedding(db, chunks[i]!.id, config.embeddingModel, embeddings[i]!);
@@ -119,8 +120,12 @@ async function getEmbeddingBatchSupport(
   config: Config,
   onProgress?: (msg: string) => void,
 ): Promise<number[][]> {
-  if (texts.length === 0) return [];
+  if (texts.length === 0) {
+    return [];
+  }
   return batchEmbed(texts, config, 100, (completed, total) => {
-    if (onProgress) onProgress(`Generating embeddings... ${completed}/${total} chunks done`);
+    if (onProgress) {
+      onProgress(`Generating embeddings... ${completed}/${total} chunks done`);
+    }
   });
 }

@@ -23,7 +23,7 @@ export function buildPrompt(
       parts.push(`Title: ${ctx.chunk.breadcrumb}`);
       parts.push(`URL: ${ctx.chunk.sourceUrl}`);
       parts.push(`Space: ${ctx.chunk.space}`);
-      if (ctx.parent && ctx.parent.id !== ctx.chunk.parentId) {
+      if (ctx.parent && ctx.parent.id === ctx.chunk.parentId) {
         parts.push('');
         parts.push('Parent section:');
         parts.push(ctx.parent.content);
@@ -72,11 +72,14 @@ GROUNDING RULES:
 10. If you make an inference from the documentation, explicitly label it as "Inference:" and cite the supporting source.
 11. Do not treat related documentation as proof of a claim unless it actually supports that claim.
 12. When giving steps, keep the documented order and names exactly as provided.
-13. Mention the documentation update date only when it is available and relevant.
-14. Do not add a Sources section. Inline [N] citations are sufficient.
+13. When the user asks for detail, explain each relevant step using the supporting details in the supplied documentation. Do not merely reformat or repeat the previous answer.
+14. If the supplied documentation contains no more detail than the previous answer, say so explicitly instead of padding the response or inventing details.
+15. For follow-up questions, use conversation history to understand the request, but answer from the supplied documentation rather than repeating the previous answer.
+16. Mention the documentation update date only when it is available and relevant.
+17. Do not add a Sources section. Inline [N] citations are sufficient.
 
 ANSWER STYLE:
-- Be direct and concise.
+- Match the requested level of detail while avoiding repetition.
 - Prefer numbered steps for procedures.
 - Use bullets for lists.
 - Use code formatting for commands, field names, DocTypes, and API names where appropriate.

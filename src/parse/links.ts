@@ -19,5 +19,6 @@ export function extractLinks(body: string): DocLink[] {
     const anchor = hashIdx !== -1 ? href.slice(hashIdx) : null;
     links.push({ text, href, isInternal, anchor });
   }
+
   return links;
 }

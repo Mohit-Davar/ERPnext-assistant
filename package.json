@@ -4,6 +4,9 @@
   "module": "src/tui/index.tsx",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "bin": {
     "erpnext": "./src/tui/index.tsx"
   },

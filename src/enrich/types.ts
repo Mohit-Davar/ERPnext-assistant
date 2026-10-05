@@ -19,3 +19,15 @@ export interface ChunkLink {
   toChunkId: string | null;
   href: string;
 }
+
+export interface ChunkReference {
+  id: string;
+  pageId: string;
+  heading: string;
+}
+export interface DocumentLink {
+  href: string;
+  isInternal: boolean;
+  anchor: string | null;
+}
+export type LinkResolver = (fromChunkId: string, links: DocumentLink[]) => ChunkLink[];

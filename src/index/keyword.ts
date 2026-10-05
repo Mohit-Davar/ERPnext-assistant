@@ -1,5 +1,5 @@
-import type { BM25Result } from '@/index/types';
 import type { Database } from '@/index/database.ts';
+import type { BM25Result } from '@/index/types';
 
 /**
  * Run a BM25 full-text search against the chunks_fts table.

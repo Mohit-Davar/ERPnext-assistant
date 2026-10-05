@@ -8,10 +8,16 @@ export function parseDocument(raw: RawDocument): ParsedDocument {
   const { frontmatter, body } = parseFrontmatter(raw.rawContent);
   const cleanBody = cleanMarkdown(body);
   const links = extractLinks(cleanBody);
+  // Determine space
+  let space = raw.space;
+  if (frontmatter.space === 'ERPNext' || frontmatter.space === 'Framework') {
+    space = frontmatter.space;
+  }
+
   return {
     id: raw.id,
     filename: raw.filename,
-    space: frontmatter.space || raw.space,
+    space,
     title: frontmatter.title || raw.id,
     url: frontmatter.url,
     updated: frontmatter.updated,

@@ -33,7 +33,9 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     normA += (a[i] ?? 0) ** 2;
     normB += (b[i] ?? 0) ** 2;
   }
-  if (normA === 0 || normB === 0) return 0;
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 

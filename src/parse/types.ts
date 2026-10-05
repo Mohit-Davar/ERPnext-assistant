@@ -26,7 +26,7 @@ export interface ParsedDocument {
 
 export interface Frontmatter {
   title: string;
-  space: string;
+  space: Space | string;
   url: string;
   updated: string;
 }

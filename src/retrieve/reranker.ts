@@ -1,6 +1,6 @@
+import type { Database } from '@/index/database.ts';
 import type { ChunkRow, FusedResult, RerankResult } from '@/retrieve/types.ts';
 import type { Config } from '@/shared/types.ts';
-import type { Database } from '@/index/database.ts';
 
 interface CohereRerankResponse {
   results: {

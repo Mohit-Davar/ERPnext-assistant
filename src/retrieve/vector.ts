@@ -1,8 +1,8 @@
+import type { Database } from '@/index/database.ts';
 import { getEmbedding } from '@/index/embed.ts';
 import { vectorSearch } from '@/index/vector.ts';
 import type { RetrievalResult } from '@/retrieve/types.ts';
 import type { Config } from '@/shared/types.ts';
-import type { Database } from '@/index/database.ts';
 
 /**
  * Embed the query and run cosine similarity search over stored embeddings.

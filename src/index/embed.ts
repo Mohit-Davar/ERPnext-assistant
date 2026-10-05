@@ -1,5 +1,4 @@
 import type { Config } from '@/shared/types.ts';
-import { generateDeterministicEmbedding } from '@/index/database.ts';
 import OpenAI from 'openai';
 
 let openaiClient: OpenAI | null = null;
@@ -17,10 +16,6 @@ function getOpenAI(config: Config): OpenAI {
  * Generate an embedding vector for a single text.
  */
 export async function getEmbedding(text: string, config: Config): Promise<number[]> {
-  if (!config.openaiApiKey) {
-    return generateDeterministicEmbedding(text);
-  }
-
   const client = getOpenAI(config);
   const response = await client.embeddings.create({
     model: config.embeddingModel,
@@ -46,10 +41,9 @@ export async function batchEmbed(
   batchSize = 100,
   onProgress?: (completed: number, total: number) => void,
 ): Promise<number[][]> {
-  if (!config.openaiApiKey) {
-    return texts.map((t) => generateDeterministicEmbedding(t));
+  if (texts.length === 0) {
+    return [];
   }
-
   const client = getOpenAI(config);
   const results: number[][] = new Array(texts.length);
 
@@ -60,10 +54,8 @@ export async function batchEmbed(
 
   let completed = 0;
   const concurrency = 5;
-
   for (let i = 0; i < batches.length; i += concurrency) {
     const currentBatches = batches.slice(i, i + concurrency);
-
     await Promise.all(
       currentBatches.map(async ({ start, batch }) => {
         const response = await client.embeddings.create({
@@ -73,17 +65,14 @@ export async function batchEmbed(
         const embeddings = response.data
           .sort((a, b) => a.index - b.index)
           .map((item) => item.embedding as number[]);
-
         if (embeddings.length !== batch.length) {
           throw new Error(
             `OpenAI returned ${embeddings.length} embeddings for ${batch.length} inputs`,
           );
         }
-
         for (let j = 0; j < embeddings.length; j++) {
           results[start + j] = embeddings[j]!;
         }
-
         completed += batch.length;
         if (onProgress) onProgress(completed, texts.length);
       }),

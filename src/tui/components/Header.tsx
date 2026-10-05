@@ -1,34 +1,27 @@
 import { Box, Text } from 'ink';
-import React from 'react';
+
+import { Tabs, type TabKey } from './Tabs.tsx';
+import { Rule } from './ui.tsx';
 
 interface HeaderProps {
-  subtitle?: string;
-  activeTab?: string;
+  activeTab: TabKey;
+  width: number;
 }
 
-export function Header({ subtitle }: HeaderProps) {
+export function Header({ activeTab, width }: HeaderProps) {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box justifyContent="space-between">
+      <Box justifyContent="space-between" width={width}>
         <Box>
           <Text bold color="cyan">
-            ◈ ERPNext Assistant
+            ◈{' '}
           </Text>
-          <Text color="gray"> │ Documentation RAG & Search</Text>
+          <Text bold>ERPNext</Text>
+          {width >= 72 && <Text dimColor> docs assistant</Text>}
         </Box>
-        {subtitle && (
-          <Box>
-            <Text color="gray" dimColor>
-              {subtitle}
-            </Text>
-          </Box>
-        )}
+        <Tabs activeTab={activeTab} />
       </Box>
-      <Box>
-        <Text color="gray" dimColor>
-          {'─'.repeat(70)}
-        </Text>
-      </Box>
+      <Rule width={width} />
     </Box>
   );
 }

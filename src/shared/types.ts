@@ -1,5 +1,5 @@
 /** Documentation space identifier */
-export type Space = 'ERPNext' | 'Framework' | string;
+export type Space = 'ERPNext' | 'Framework';
 
 /** Configuration loaded from environment variables */
 export interface Config {

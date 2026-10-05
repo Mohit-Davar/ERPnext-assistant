@@ -1,6 +1,6 @@
+import type { Database } from '@/index/database.ts';
 import { bm25Search } from '@/index/keyword.ts';
 import type { RetrievalResult } from '@/retrieve/types.ts';
-import type { Database } from '@/index/database.ts';
 
 /**
  * Run BM25 keyword search and return ranked results.

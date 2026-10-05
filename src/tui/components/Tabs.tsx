@@ -1,39 +1,34 @@
 import { Box, Text } from 'ink';
-import React from 'react';
 
-export type TabKey = 'ask' | 'search' | 'ingest' | 'history';
+export type TabKey = 'ask' | 'search' | 'history';
 
 interface TabsProps {
   activeTab: TabKey;
-  onSelectTab?: (tab: TabKey) => void;
 }
 
-export const TAB_ORDER: TabKey[] = ['ask', 'search', 'ingest', 'history'];
+export const TAB_ORDER: TabKey[] = ['ask', 'search', 'history'];
 
 export const TAB_LABELS: Record<TabKey, string> = {
   ask: 'Ask',
   search: 'Search',
-  ingest: 'Ingest',
   history: 'History',
 };
 
 export function Tabs({ activeTab }: TabsProps) {
   return (
-    <Box flexDirection="row" marginBottom={1}>
+    <Box>
       {TAB_ORDER.map((tab, idx) => {
         const isActive = tab === activeTab;
         return (
-          <Box key={tab} marginRight={2}>
+          <Box key={tab} marginLeft={idx === 0 ? 0 : 3}>
+            <Text dimColor>{idx + 1} </Text>
             {isActive ? (
-              <Text bold color="black" backgroundColor="cyan">
-                {` [ ${TAB_LABELS[tab]} ] `}
+              <Text bold color="cyan" underline>
+                {TAB_LABELS[tab]}
               </Text>
             ) : (
-              <Text color="gray">
-                {`   ${TAB_LABELS[tab]}   `}
-              </Text>
+              <Text dimColor>{TAB_LABELS[tab]}</Text>
             )}
-            {idx < TAB_ORDER.length - 1 && <Text color="gray" dimColor>│</Text>}
           </Box>
         );
       })}
